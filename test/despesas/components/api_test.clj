@@ -4,9 +4,13 @@
             [com.stuartsierra.component :as component]
             [despesas.components.api :as api]
             [despesas.core :as core]
-            [clj-http.client :as client]))
+            [clj-http.client :as client]
+            [clojure.string :as str]))
 
 (def url-for (route/url-for-routes api/routes))
+
+(defn sut->url [sut path]
+  (str/join ["http://localhost:" (-> sut :api-component :config :server :port) path]))
 
 (defmacro with-system
   [[bound-var binding-expr] & body]
@@ -20,7 +24,7 @@
   (with-system
       [sut (core/api-system {:server {:port 8088}})]
     (is (= {:body "Hello world!" :status 200}
-           (-> (client/get "http://localhost:8088/hello")
+           (-> (client/get (sut->url sut (url-for :hello)))
                (select-keys [:body :status]))))))
 
 (deftest get-despesa-test
@@ -30,7 +34,12 @@
           despesa-1 {:id id-1 :content "pão comprado"}]
       (reset! (-> sut :memory-state-component :state-atom)
               [despesa-1])
-      (-> (client/get (str "http://localhost:8088/despesas/" id-1))
+      (-> (client/get (sut->url sut (url-for :get-despesa {:path-params {:id id-1}})))
           (select-keys [:body :status])
           (is (= {:body {:content "pão comprado"}
-                  :status 200}))))))
+                  :status 200})))
+      (testing "Empty body return form random id"
+        (-> (client/get (sut->url sut (url-for :get-despesa {:path-params {:id (random-uuid)}})))
+            (select-keys [:body :status])
+            (is (= {:body ""
+                    :status 200})))))))
