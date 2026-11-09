@@ -12,6 +12,10 @@
 (defn sut->url [sut path]
   (str/join ["http://localhost:" (-> sut :api-component :config :server :port) path]))
 
+(defn get-free-port []
+  (with-open [socket (java.net.ServerSocket. 0)]
+    (.getLocalPort socket)))
+
 (defmacro with-system
   [[bound-var binding-expr] & body]
   `(let [~bound-var (component/start ~binding-expr)]
@@ -22,14 +26,14 @@
 
 (deftest hello-test
   (with-system
-      [sut (core/api-system {:server {:port 8088}})]
+      [sut (core/api-system {:server {:port (get-free-port)}})]
     (is (= {:body "Hello world!" :status 200}
            (-> (client/get (sut->url sut (url-for :hello)))
                (select-keys [:body :status]))))))
 
 (deftest get-despesa-test
   (with-system
-    [sut (core/api-system {:server {:port 8088}})]
+    [sut (core/api-system {:server {:port (get-free-port)}})]
     (let [id-1 (random-uuid)
           despesa-1 {:id id-1 :content "pão comprado"}]
       (reset! (-> sut :memory-state-component :state-atom)
