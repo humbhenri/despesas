@@ -2,7 +2,8 @@
   (:require [com.stuartsierra.component :as component]
             [io.pedestal.http :as http]
             [io.pedestal.http.route :as route]
-            [io.pedestal.interceptor :as interceptor]))
+            [io.pedestal.interceptor :as interceptor]
+            [io.pedestal.http.content-negotiation :as content-negotation]))
 
 (defn response [status body]
   {:status status :body body :headers nil})
@@ -16,14 +17,15 @@
        (filter (fn [despesa] (= id (:id despesa))))))
 
 (def get-despesa-handler
-  {
-   :name :get-despesa
+  {:name :get-despesa
    :enter (fn [{:keys [dependencies] :as context}]
             (println "get-despesa-handler" dependencies)
             (let [request (:request context)
                   id (-> request :path-params :id (parse-uuid))
                   response (ok (get-despesa-by-id dependencies id))]
               (assoc context :response response)))})
+
+(def content-negotiation-interceptor (content-negotation/negotiate-content ["application/json"]))
 
 (def routes
   (route/expand-routes
@@ -36,7 +38,6 @@
     :enter (fn [context]
              (assoc context :dependencies dependencies))}))
 
-
 (defrecord ApiComponent [config memory-state-component]
   component/Lifecycle
 
@@ -44,7 +45,7 @@
     (println "Starting Api component")
     (let [server (-> {::http/join? false ::http/routes routes ::http/type :jetty ::http/port (-> config :server :port)}
                      (http/default-interceptors)
-                     (update ::http/interceptors concat [(inject-dependencies component)])
+                     (update ::http/interceptors concat [(inject-dependencies component) content-negotiation-interceptor])
                      (http/create-server)
                      (http/start))]
       (assoc component :server server)))

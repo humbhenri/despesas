@@ -26,10 +26,17 @@
 
 (deftest hello-test
   (with-system
-      [sut (core/api-system {:server {:port (get-free-port)}})]
+    [sut (core/api-system {:server {:port (get-free-port)}})]
     (is (= {:body "Hello world!" :status 200}
            (-> (client/get (sut->url sut (url-for :hello)))
                (select-keys [:body :status]))))))
+
+(deftest content-negotiation-test
+  (with-system
+    [sut (core/api-system {:server {:port (get-free-port)}})]
+    (is (= {:status 406}
+           (-> (client/get (sut->url sut (url-for :hello)) {:accept :edn :throw-exceptions false})
+               (select-keys [:status]))))))
 
 (deftest get-despesa-test
   (with-system
@@ -38,7 +45,8 @@
           despesa-1 {:id id-1 :content "pão comprado"}]
       (reset! (-> sut :memory-state-component :state-atom)
               [despesa-1])
-      (-> (client/get (sut->url sut (url-for :get-despesa {:path-params {:id id-1}})))
+      (-> (sut->url sut (url-for :get-despesa {:path-params {:id id-1}}))
+          (client/get {:accept :json})
           (select-keys [:body :status])
           (is (= {:body {:content "pão comprado"}
                   :status 200})))
