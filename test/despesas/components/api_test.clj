@@ -5,7 +5,8 @@
             [despesas.components.api :as api]
             [despesas.core :as core]
             [clj-http.client :as client]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [cheshire.core :as json]))
 
 (def url-for (route/url-for-routes api/routes))
 
@@ -45,7 +46,7 @@
           despesa-1 {:id id-1 :content "pão comprado"}]
       (reset! (-> sut :memory-state-component :state-atom)
               [despesa-1])
-      (is (= {:body {:id (str id-1) :content "pão comprado"}
+      (is (= {:body (json/encode despesa-1)
               :status 200}
              (-> (sut->url sut (url-for :get-despesa {:path-params {:id id-1}}))
                  (client/get {:accept :json :as :json :throw-exceptions false})
@@ -56,3 +57,19 @@
                 (sut->url sut (url-for :get-despesa {:path-params {:id (random-uuid)}}))
                 (client/get {:throw-exceptions false})
                 (select-keys [:status]))))))))
+
+(deftest post-despesa-test
+  (with-system
+    [sut (core/api-system {:server {:port (get-free-port)}})]
+    (let [id-1 (random-uuid)
+          despesa-1 {:id id-1 :content "pão comprado"}]
+      (is (= {:body (json/encode despesa-1)
+              :status 201}
+             (-> (sut->url sut (url-for :post-despesa))
+                 (client/post {:content-type :json :throw-exceptions false :body (json/encode despesa-1)})
+                 (select-keys [:body :status]))))
+      (testing "invalid data"
+        (is (= {:status 500}
+               (-> (sut->url sut (url-for :post-despesa))
+                   (client/post {:content-type :json :throw-exceptions false :body (json/encode {})})
+                   (select-keys [:status]))))))))
