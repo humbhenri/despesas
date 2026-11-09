@@ -45,13 +45,14 @@
           despesa-1 {:id id-1 :content "pão comprado"}]
       (reset! (-> sut :memory-state-component :state-atom)
               [despesa-1])
-      (-> (sut->url sut (url-for :get-despesa {:path-params {:id id-1}}))
-          (client/get {:accept :json})
-          (select-keys [:body :status])
-          (is (= {:body {:content "pão comprado"}
-                  :status 200})))
+      (is (= {:body {:id (str id-1) :content "pão comprado"}
+              :status 200}
+             (-> (sut->url sut (url-for :get-despesa {:path-params {:id id-1}}))
+                 (client/get {:accept :json :as :json :throw-exceptions false})
+                 (select-keys [:body :status]))))
       (testing "Empty body return form random id"
-        (-> (client/get (sut->url sut (url-for :get-despesa {:path-params {:id (random-uuid)}})))
-            (select-keys [:body :status])
-            (is (= {:body ""
-                    :status 200})))))))
+        (is (= {:status 404}
+               (->
+                (sut->url sut (url-for :get-despesa {:path-params {:id (random-uuid)}}))
+                (client/get {:throw-exceptions false})
+                (select-keys [:status]))))))))

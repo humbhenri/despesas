@@ -3,18 +3,27 @@
             [io.pedestal.http :as http]
             [io.pedestal.http.route :as route]
             [io.pedestal.interceptor :as interceptor]
-            [io.pedestal.http.content-negotiation :as content-negotation]))
+            [io.pedestal.http.content-negotiation :as content-negotation]
+            [cheshire.core :as json]))
 
-(defn response [status body]
-  {:status status :body body :headers nil})
+(defn response
+  ([status]
+   (response status nil))
+  ([status body]
+   (merge
+    {:status status :headers {"Content-Type" "application/json"}}
+    (when body {:body body}))))
 
 (def ok (partial response 200))
+
+(def not-found (partial response 404))
 
 (defn hello [req] {:status 200 :body "Hello world!"})
 
 (defn get-despesa-by-id [{:keys [memory-state-component]} id]
   (->> @(:state-atom memory-state-component)
-       (filter (fn [despesa] (= id (:id despesa))))))
+       (filter (fn [despesa] (= id (:id despesa))))
+       (first)))
 
 (def get-despesa-handler
   {:name :get-despesa
@@ -22,7 +31,8 @@
             (println "get-despesa-handler" dependencies)
             (let [request (:request context)
                   id (-> request :path-params :id (parse-uuid))
-                  response (ok (get-despesa-by-id dependencies id))]
+                  despesa (get-despesa-by-id dependencies id)
+                  response (if despesa (ok (json/encode despesa)) (not-found))]
               (assoc context :response response)))})
 
 (def content-negotiation-interceptor (content-negotation/negotiate-content ["application/json"]))
