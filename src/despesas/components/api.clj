@@ -6,7 +6,8 @@
             [io.pedestal.http.content-negotiation :as content-negotation]
             [io.pedestal.http.body-params :as body-params]
             [cheshire.core :as json]
-            [schema.core :as s]))
+            [schema.core :as s]
+            [next.jdbc :as jdbc]))
 
 (defn response
   ([status]
@@ -56,11 +57,19 @@
 
 (def content-negotiation-interceptor (content-negotation/negotiate-content ["application/json"]))
 
+(def info-handler
+  {:name :info
+   :enter (fn [{:keys [dependencies] :as context}]
+            (let [{:keys [data-source]} dependencies
+                  db-response (:server_version (first (jdbc/execute! (data-source) ["show server_version"])))]
+              (assoc context :response (ok (str "Database version: " db-response)))))})
+
 (def routes
   (route/expand-routes
    #{["/hello" :get hello :route-name :hello]
      ["/despesas/:id" :get get-despesa-handler :route-name :get-despesa]
-     ["/despesas" :post [(body-params/body-params) post-despesa-handler] :route-name :post-despesa]}))
+     ["/despesas" :post [(body-params/body-params) post-despesa-handler] :route-name :post-despesa]
+     ["/info" :get info-handler :route-name :info]}))
 
 (defn inject-dependencies [dependencies]
   (interceptor/interceptor
@@ -68,7 +77,7 @@
     :enter (fn [context]
              (assoc context :dependencies dependencies))}))
 
-(defrecord ApiComponent [config memory-state-component]
+(defrecord ApiComponent [config memory-state-component data-source]
   component/Lifecycle
 
   (start [component]

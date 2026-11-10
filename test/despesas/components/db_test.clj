@@ -1,6 +1,8 @@
 (ns despesas.components.db-test
   (:require [clojure.java.shell :refer [sh]]
-            [clojure.test :refer [use-fixtures deftest is]]))
+            [clojure.test :refer [use-fixtures deftest is]]
+            [next.jdbc :as jdbc]
+            [despesas.config :as config]))
 
 (defn run-db-command [command]
   (let [{:keys [exit err]} (sh command)]
@@ -13,9 +15,14 @@
   (try
     (tests)
     (finally
-      (run-db-command "stop-database"))))
+      #(run-db-command "stop-database"))))
 
 (use-fixtures :once database-fixture)
 
 (deftest simple-test
-  (is (= 1 1)))
+  (let [config (config/read-config)
+        [host port database user password] (-> config :test :db (select-keys [:host :port :database :user :password]) vals)
+        ds (jdbc/get-datasource {:jdbcUrl (str "postgresql://" host ":" port "/" database)
+                                 :user user
+                                 :password password})]
+    (is (= {:r 1} (first (jdbc/execute! ds ["select 1 as r;"]))))))
