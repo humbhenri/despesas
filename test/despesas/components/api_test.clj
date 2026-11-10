@@ -19,27 +19,29 @@
   (with-open [socket (java.net.ServerSocket. 0)]
     (.getLocalPort socket)))
 
-(defn config-with-free-port []
-  (-> (config/read-config)
-      (merge {:server {:port (get-free-port)}})))
+(defn new-config []
+  (let [config (config/read-config)]
+    (-> config
+        (assoc :db (:db (:test config)))
+        (assoc :server {:port (get-free-port)}))))
 
 (deftest hello-test
   (with-system
-    [sut (core/api-system (config-with-free-port))]
+    [sut (core/api-system (new-config))]
     (is (= {:body "Hello world!" :status 200}
            (-> (client/get (sut->url sut (url-for :hello)))
                (select-keys [:body :status]))))))
 
 (deftest content-negotiation-test
   (with-system
-    [sut (core/api-system (config-with-free-port))]
+    [sut (core/api-system (new-config))]
     (is (= {:status 406}
            (-> (client/get (sut->url sut (url-for :hello)) {:accept :edn :throw-exceptions false})
                (select-keys [:status]))))))
 
 (deftest get-despesa-test
   (with-system
-    [sut (core/api-system (config-with-free-port))]
+    [sut (core/api-system (new-config))]
     (let [id-1 (random-uuid)
           despesa-1 {:id id-1 :content "pão comprado"}]
       (reset! (-> sut :memory-state-component :state-atom)
@@ -58,7 +60,7 @@
 
 (deftest post-despesa-test
   (with-system
-    [sut (core/api-system (config-with-free-port))]
+    [sut (core/api-system (new-config))]
     (let [id-1 (random-uuid)
           despesa-1 {:id id-1 :content "pão comprado"}]
       (is (= {:body (json/encode despesa-1)
