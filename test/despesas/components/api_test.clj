@@ -3,7 +3,9 @@
             [io.pedestal.http.route :as route]
             [com.stuartsierra.component :as component]
             [despesas.components.api :as api]
+            [despesas.utils :refer [with-system]]
             [despesas.core :as core]
+            [despesas.config :as config]
             [clj-http.client :as client]
             [clojure.string :as str]
             [cheshire.core :as json]))
@@ -17,31 +19,27 @@
   (with-open [socket (java.net.ServerSocket. 0)]
     (.getLocalPort socket)))
 
-(defmacro with-system
-  [[bound-var binding-expr] & body]
-  `(let [~bound-var (component/start ~binding-expr)]
-     (try
-       ~@body
-       (finally
-         (component/stop ~bound-var)))))
+(defn config-with-free-port []
+  (-> (config/read-config)
+      (merge {:server {:port (get-free-port)}})))
 
 (deftest hello-test
   (with-system
-    [sut (core/api-system {:server {:port (get-free-port)}})]
+    [sut (core/api-system (config-with-free-port))]
     (is (= {:body "Hello world!" :status 200}
            (-> (client/get (sut->url sut (url-for :hello)))
                (select-keys [:body :status]))))))
 
 (deftest content-negotiation-test
   (with-system
-    [sut (core/api-system {:server {:port (get-free-port)}})]
+    [sut (core/api-system (config-with-free-port))]
     (is (= {:status 406}
            (-> (client/get (sut->url sut (url-for :hello)) {:accept :edn :throw-exceptions false})
                (select-keys [:status]))))))
 
 (deftest get-despesa-test
   (with-system
-    [sut (core/api-system {:server {:port (get-free-port)}})]
+    [sut (core/api-system (config-with-free-port))]
     (let [id-1 (random-uuid)
           despesa-1 {:id id-1 :content "pão comprado"}]
       (reset! (-> sut :memory-state-component :state-atom)
@@ -60,7 +58,7 @@
 
 (deftest post-despesa-test
   (with-system
-    [sut (core/api-system {:server {:port (get-free-port)}})]
+    [sut (core/api-system (config-with-free-port))]
     (let [id-1 (random-uuid)
           despesa-1 {:id id-1 :content "pão comprado"}]
       (is (= {:body (json/encode despesa-1)

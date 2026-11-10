@@ -16,16 +16,19 @@
        (table "schema_version")
        (load))))
 
-(defn api-system [config]
+(defn new-datasource-component [config]
   (let [[host port database user password] (-> config :db (select-keys [:host :port :database :user :password]) vals)
         db-spec {:jdbcUrl (str "jdbc:postgresql://" host ":" port "/" database)
                  :username user
                  :password password}]
-    (component/system-map
-     :memory-state-component (memory-state/new-memory-state-component config)
-     :data-source (connection/component HikariDataSource
-                                        (assoc db-spec :init-fn
-                                               (fn [ds]
-                                                 (log/info "Database init")
-                                                 (migrate-db ds))))
-     :api-component (component/using (api/new-api-component config) [:memory-state-component :data-source]))))
+    (connection/component HikariDataSource
+                          (assoc db-spec :init-fn
+                                 (fn [ds]
+                                   (log/info "Database init")
+                                   (migrate-db ds))))))
+
+(defn api-system [config]
+  (component/system-map
+   :memory-state-component (memory-state/new-memory-state-component config)
+   :data-source (new-datasource-component config)
+   :api-component (component/using (api/new-api-component config) [:memory-state-component :data-source])))
