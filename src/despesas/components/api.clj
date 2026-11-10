@@ -8,7 +8,10 @@
             [cheshire.core :as json]
             [schema.core :as s]
             [next.jdbc :as jdbc]
-            [clojure.tools.logging :as log]))
+            [next.jdbc.result-set :as rs]
+            [clojure.tools.logging :as log]
+            [honey.sql :as sql]
+            [clojure.pprint :refer [pprint]]))
 
 (defn response
   ([status]
@@ -34,27 +37,41 @@
 (def get-despesa-handler
   {:name :get-despesa
    :enter (fn [{:keys [dependencies] :as context}]
-            (println "get-despesa-handler" dependencies)
             (let [request (:request context)
                   id (-> request :path-params :id (parse-uuid))
-                  despesa (get-despesa-by-id dependencies id)
-                  response (if despesa (ok (json/encode despesa)) (not-found))]
+                  {:keys [data-source]} dependencies
+                  query (-> {:select :* :from :despesas :where [:= :id id]} (sql/format))
+                  despesa (-> (jdbc/execute! (data-source) query {:builder-fn rs/as-unqualified-lower-maps}) first)
+                  response (if despesa (ok despesa) (not-found))]
               (assoc context :response response)))})
 
 (defn save-despesa! [{:keys [memory-state-component]} despesa]
   (swap! (:state-atom memory-state-component) conj despesa))
 
 (s/defschema Despesa
-  {:id s/Str
-   :content s/Str})
+  {:content s/Str
+   :val s/Num})
+
+(defn spy [x]
+  (pprint x)
+  x)
 
 (def post-despesa-handler
   {:name :post-despesa
    :enter (fn [{:keys [dependencies] :as context}]
             (let [request (:request context)
-                  despesa (s/validate Despesa (:json-params request))]
-              (save-despesa! dependencies despesa)
-              (assoc context :response (created despesa))))})
+                  despesa (s/validate Despesa (:json-params request))
+                  content (:content despesa)
+                  val (:val despesa)
+                  {:keys [data-source]} dependencies
+                  query (-> {:insert-into :despesas
+                             :columns [:content :val]
+                             :values [[content val]]
+                             :returning :*}
+                            (sql/format))
+                  results (jdbc/execute! (data-source) query
+                                         {:builder-fn rs/as-unqualified-lower-maps})]
+              (assoc context :response (created (first results)))))})
 
 (def content-negotiation-interceptor (content-negotation/negotiate-content ["application/json"]))
 
@@ -65,11 +82,20 @@
                   db-response (:server_version (first (jdbc/execute! (data-source) ["show server_version"])))]
               (assoc context :response (ok (str "Database version: " db-response)))))})
 
+(def get-despesas-handler
+  {:name :get-despesas
+   :enter (fn [{:keys [dependencies] :as context}]
+            (let [{:keys [data-source]} dependencies
+                  query (-> {:select :* :from :despesas} (sql/format))
+                  despesas (jdbc/execute! (data-source) query {:builder-fn rs/as-unqualified-lower-maps})]
+              (assoc context :response (ok despesas))))})
+
 (def routes
   (route/expand-routes
    #{["/hello" :get hello :route-name :hello]
      ["/despesas/:id" :get get-despesa-handler :route-name :get-despesa]
      ["/despesas" :post [(body-params/body-params) post-despesa-handler] :route-name :post-despesa]
+     ["/despesas" :get get-despesas-handler :route-name :get-despesas]
      ["/info" :get info-handler :route-name :info]}))
 
 (defn inject-dependencies [dependencies]

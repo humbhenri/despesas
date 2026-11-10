@@ -6,7 +6,8 @@
             [com.stuartsierra.component :as component]
             [despesas.config :as config]
             [despesas.core :as core]
-            [despesas.utils :refer [with-system]]))
+            [despesas.utils :refer [with-system]]
+            [honey.sql :as sql]))
 
 (defn run-db-command [command]
   (let [{:keys [exit err]} (sh command)]
@@ -39,10 +40,21 @@
   (with-system [sut (datasource-only-system (:test (config/read-config)))]
     (let [{:keys [data-source]} sut
           [schema-version :as schema-versions]
-          (jdbc/execute! (data-source) ["select * from schema_version"]
+          (jdbc/execute! (data-source) (sql/format {:select :* :from :schema-version})
                          {:builder-fn rs/as-unqualified-lower-maps})]
       (is (= 1 (count schema-versions)))
       (is (= {:description "add despesas tables"
               :script "V1__add_despesas_tables.sql"
               :success true}
              (select-keys schema-version [:description :script :success]))))))
+
+(deftest insert-test
+  (with-system [sut (datasource-only-system (:test (config/read-config)))]
+    (let [{:keys [data-source]} sut
+          query {:insert-into :despesas
+                 :columns [:content :val]
+                 :values [["test" 11.23]]
+                 :returning :*}
+          results (jdbc/execute! (data-source) (sql/format query)
+                                 {:builder-fn rs/as-unqualified-lower-maps})]
+      (is (= #{"test"} (->> results (map :content) (into #{})))))))

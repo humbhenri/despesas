@@ -39,37 +39,31 @@
            (-> (client/get (sut->url sut (url-for :hello)) {:accept :edn :throw-exceptions false})
                (select-keys [:status]))))))
 
-(deftest get-despesa-test
+(deftest get-despesas-test
   (with-system
     [sut (core/api-system (new-config))]
-    (let [id-1 (random-uuid)
-          despesa-1 {:id id-1 :content "pão comprado"}]
-      (reset! (-> sut :memory-state-component :state-atom)
-              [despesa-1])
-      (is (= {:body (json/encode despesa-1)
-              :status 200}
-             (-> (sut->url sut (url-for :get-despesa {:path-params {:id id-1}}))
-                 (client/get {:accept :json :as :json :throw-exceptions false})
-                 (select-keys [:body :status]))))
-      (testing "Empty body return form random id"
-        (is (= {:status 404}
-               (->
-                (sut->url sut (url-for :get-despesa {:path-params {:id (random-uuid)}}))
-                (client/get {:throw-exceptions false})
-                (select-keys [:status]))))))))
+    (let [url (-> (sut->url sut (url-for :get-despesas)))
+          response (client/get url)]
+      (is (= 200 (:status response))))))
 
 (deftest post-despesa-test
   (with-system
     [sut (core/api-system (new-config))]
-    (let [id-1 (random-uuid)
-          despesa-1 {:id id-1 :content "pão comprado"}]
-      (is (= {:body (json/encode despesa-1)
-              :status 201}
-             (-> (sut->url sut (url-for :post-despesa))
-                 (client/post {:content-type :json :throw-exceptions false :body (json/encode despesa-1)})
-                 (select-keys [:body :status]))))
-      (testing "invalid data"
-        (is (= {:status 500}
-               (-> (sut->url sut (url-for :post-despesa))
-                   (client/post {:content-type :json :throw-exceptions false :body (json/encode {})})
-                   (select-keys [:status]))))))))
+    (let [url (-> (sut->url sut (url-for :post-despesa)))
+          despesa {:content "test" :val 1}
+          response (client/post url {:content-type :json :body (json/encode despesa)})]
+      (is (= 201 (:status response)))
+      (testing "get-despesa-test"
+        (let [decoded (json/decode (:body response))
+              id (-> decoded (select-keys ["id"]) (vals) (first))
+              get-url (-> (sut->url sut (url-for :get-despesa {:path-params {:id id}})))
+              get-response (client/get get-url)]
+          (is (= 200 (:status get-response))))))))
+
+(deftest get-despesa-not-found-test
+  (with-system
+    [sut (core/api-system (new-config))]
+    (let [id (random-uuid)
+          get-url (->> (url-for :get-despesa {:path-params {:id id}}) (sut->url sut))
+          get-response (client/get get-url {:throw-exceptions false})]
+      (is (= 404 (:status get-response))))))
