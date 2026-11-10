@@ -7,7 +7,8 @@
             [io.pedestal.http.body-params :as body-params]
             [cheshire.core :as json]
             [schema.core :as s]
-            [next.jdbc :as jdbc]))
+            [next.jdbc :as jdbc]
+            [clojure.tools.logging :as log]))
 
 (defn response
   ([status]
@@ -81,7 +82,7 @@
   component/Lifecycle
 
   (start [component]
-    (println "Starting Api component")
+    (log/info "Starting Api component")
     (let [server (-> {::http/join? false ::http/routes routes ::http/type :jetty ::http/port (-> config :server :port)}
                      (http/default-interceptors)
                      (update ::http/interceptors concat [(inject-dependencies component) content-negotiation-interceptor])
@@ -90,9 +91,9 @@
       (assoc component :server server)))
 
   (stop [component]
-    (println "Stopping Api component")
+    (log/info "Stopping Api component")
     (when-let [server (:server component)]
-      (println "Stopping web server")
+      (log/info "Stopping web server")
       (http/stop server))
     (assoc component :server nil)))
 

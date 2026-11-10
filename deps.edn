@@ -13,9 +13,8 @@
         com.zaxxer/HikariCP {:mvn/version "5.0.1"}
         hiccup/hiccup {:mvn/version "2.0.0-RC1"}
         faker/faker {:mvn/version "0.3.2"}
-        }
- :aliases {
-           :dev {:extra-paths ["dev"]
+        org.flywaydb/flyway-database-postgresql {:mvn/version "13.12.1"}}
+ :aliases {:dev {:extra-paths ["dev"]
                  :extra-deps {org.clojure/tools.namespace {:mvn/version "1.5.0"}
                               binaryage/devtools {:mvn/version "0.9.11"}}}
            :test {:extra-paths ["test"]

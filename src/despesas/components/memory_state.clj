@@ -1,15 +1,16 @@
 (ns despesas.components.memory-state
-  (:require [com.stuartsierra.component :as component]))
+  (:require [com.stuartsierra.component :as component]
+            [clojure.tools.logging :as log]))
 
 (defrecord MemoryStateComponent [config]
   component/Lifecycle
 
   (start [component]
-    (println "Starting MemoryState component")
+    (log/info "Starting MemoryState component")
     (assoc component :state-atom (atom [])))
 
   (stop [component]
-    (println "Stopping MemoryState component")
+    (log/info "Stopping MemoryState component")
     (assoc component :state-atom nil)))
 
 (defn new-memory-state-component [config]
