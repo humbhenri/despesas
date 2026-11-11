@@ -29,11 +29,6 @@
 
 (defn hello [req] {:status 200 :body "Hello world!"})
 
-(defn get-despesa-by-id [{:keys [memory-state-component]} id]
-  (->> @(:state-atom memory-state-component)
-       (filter (fn [despesa] (= id (:id despesa))))
-       (first)))
-
 (def get-despesa-handler
   {:name :get-despesa
    :enter (fn [{:keys [dependencies] :as context}]
@@ -44,9 +39,6 @@
                   despesa (-> (jdbc/execute! (data-source) query {:builder-fn rs/as-unqualified-lower-maps}) first)
                   response (if despesa (ok despesa) (not-found))]
               (assoc context :response response)))})
-
-(defn save-despesa! [{:keys [memory-state-component]} despesa]
-  (swap! (:state-atom memory-state-component) conj despesa))
 
 (s/defschema Despesa
   {:content s/Str

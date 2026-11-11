@@ -32,3 +32,12 @@
    :memory-state-component (memory-state/new-memory-state-component config)
    :data-source (new-datasource-component config)
    :api-component (component/using (api/new-api-component config) [:memory-state-component :data-source])))
+
+(defn -main []
+  (let [system (-> (config/read-config)
+                   (api-system)
+                   (component/start-system))]
+    (log/info "Starting system")
+    (.addShutdownHook
+     (Runtime/getRuntime)
+     (new Thread #(component/stop-system system)))))
