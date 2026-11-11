@@ -8,4 +8,12 @@ http://localhost:8080.
 
 ### Testes
 
-Executar `clj -X:test` no root do projeto.
+Executar `clj -X:test` no root do projeto ou usar o script test.sh.
+
+### Build
+
+``` shell
+clojure -T:build uber
+```
+
+ou o script build.sh.

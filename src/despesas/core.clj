@@ -1,4 +1,5 @@
 (ns despesas.core
+  (:gen-class)
   (:require [despesas.config :as config]
             [com.stuartsierra.component :as component]
             [despesas.components.api :as api]

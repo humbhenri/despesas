@@ -26,10 +26,7 @@
               db.psql-wrapped
             ];
         packages = with pkgs; [
-          nodejs_24
-          pkgs.typescript
-          pkgs.typescript-language-server
- 	        tree-sitter
+          javaPackages.compiler.temurin-bin.jre-25
           clojure
         ];
 
