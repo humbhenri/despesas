@@ -11,7 +11,8 @@
             [next.jdbc.result-set :as rs]
             [clojure.tools.logging :as log]
             [honey.sql :as sql]
-            [clojure.pprint :refer [pprint]]))
+            [clojure.pprint :refer [pprint]]
+            [despesas.html.root :refer [html-root-handler]]))
 
 (defn response
   ([status]
@@ -88,7 +89,8 @@
      ["/despesas/:id" :get get-despesa-handler :route-name :get-despesa]
      ["/despesas" :post [(body-params/body-params) post-despesa-handler] :route-name :post-despesa]
      ["/despesas" :get get-despesas-handler :route-name :get-despesas]
-     ["/info" :get info-handler :route-name :info]}))
+     ["/info" :get info-handler :route-name :info]
+     ["/" :get html-root-handler :route-name :html-root]}))
 
 (defn inject-dependencies [dependencies]
   (interceptor/interceptor
@@ -101,7 +103,11 @@
 
   (start [component]
     (log/info "Starting Api component")
-    (let [server (-> {::http/join? false ::http/routes routes ::http/type :jetty ::http/port (-> config :server :port)}
+    (let [server (-> {::http/join? false
+                      ::http/routes routes
+                      ::http/type :jetty
+                      ::http/port (-> config :server :port)
+                      ::http/secure-headers {:content-security-policy-settings {:object-src "none"}}}
                      (http/default-interceptors)
                      (update ::http/interceptors concat [(inject-dependencies component) content-negotiation-interceptor])
                      (http/create-server)
