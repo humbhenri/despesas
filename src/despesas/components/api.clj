@@ -12,7 +12,7 @@
             [clojure.tools.logging :as log]
             [honey.sql :as sql]
             [clojure.pprint :refer [pprint]]
-            [despesas.html.root :refer [html-root-handler]]))
+            [despesas.html.root :refer [html-root-handler view-despesas-items-handler]]))
 
 (defn response
   ([status]
@@ -90,7 +90,8 @@
      ["/despesas" :post [(body-params/body-params) post-despesa-handler] :route-name :post-despesa]
      ["/despesas" :get get-despesas-handler :route-name :get-despesas]
      ["/info" :get info-handler :route-name :info]
-     ["/" :get html-root-handler :route-name :html-root]}))
+     ["/" :get html-root-handler :route-name :html-root]
+     ["/view/despesas/items" :get view-despesas-items-handler :route-name :view-despesas-items]}))
 
 (defn inject-dependencies [dependencies]
   (interceptor/interceptor

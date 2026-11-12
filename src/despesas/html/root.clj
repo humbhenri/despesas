@@ -5,7 +5,13 @@
             [clojure.string :as str]
             [next.jdbc :as jdbc]
             [next.jdbc.result-set :as rs]
-            [honey.sql :as sql]))
+            [honey.sql :as sql]
+            [clojure.tools.logging :as log])
+  (:import [java.time LocalDateTime]
+           [java.time.format DateTimeFormatterBuilder]
+           [java.time.temporal ChronoField]
+           [java.text NumberFormat]
+           [java.util Locale]))
 
 (defn ok
   [body]
@@ -34,25 +40,76 @@
 
 (def page-size 10)
 
-(defn get-despesas [data-source]
-  (let [query (-> {:select :* :from [[:despesas :d]] :order-by [[:d.created_at :desc]]} (sql/format))
-        despesas (-> (jdbc/execute! (data-source) query {:builder-fn rs/as-unqualified-lower-maps}))
-        th-class {:scope "col" :class "px-6 py-3 text-left text-xs font-medium uppercase text-gray-500"}]
-    [:table {:class "min-w-full divide-y divide-gray-200 border border-gray-200"}
-     [:thead {:class "bg-gray-50"}
-      [:tr
-       [:th th-class "Nome"]
-       [:th {:scope "col" :class "px-6 py-3 text-left text-xs font-medium uppercase text-gray-500"} "Valor"]]]
-     [:tbody {:class "divide-y divide-gray-200 bg-white"}
-      (->> despesas
-           (map (fn [{:keys [content val]}]
-                  [:tr {:class "hover:bg-gray-50"}
-                   [:td {:class "whitespace-nowrap px-6 text-gray-500"} content]
-                   [:td {:class "whitespace-nowrap px-6 text-gray-500"} val]])))]]))
+(def parser
+  (-> (DateTimeFormatterBuilder.)
+      (.appendPattern "yyyy-MM-dd HH:mm:ss")
+      (.appendFraction ChronoField/NANO_OF_SECOND 0 9 true)
+      (.toFormatter)))
+
+(def formatter
+  (java.time.format.DateTimeFormatter/ofPattern "dd/MM/yyyy HH:mm"))
+
+(defn format-date [date-str]
+  (.format (LocalDateTime/parse date-str parser) formatter))
+
+(defn format-money [value]
+  (.format (NumberFormat/getCurrencyInstance
+            (Locale/forLanguageTag "pt-BR"))
+           (bigdec value)))
+
+(defn get-despesas [page data-source]
+  (let [query (-> {:select :*
+                   :from [[:despesas :d]]
+                   :order-by [[:d.created_at :desc]]
+                   :offset (* page page-size)
+                   :limit page-size}
+                  (sql/format))
+        despesas (-> (jdbc/execute! (data-source) query {:builder-fn rs/as-unqualified-lower-maps}))]
+    despesas))
+
+(defn loader [next-page]
+  [:div.bg-red-100.p10
+   {:hx-get (str "/view/despesas/items?page=" next-page)
+    :hx-trigger "revealed"
+    :hx-target "this"
+    :hx-swap "outerHTML"}
+   [:span (format "... loading page %s ..." next-page)]])
+
+(defn item-component
+  [{:keys [id
+           content
+           val
+           created_at]}]
+  [:article.p-6.even:bg-white.odd:bg-slate-100.sm:p-8.hover:scale-105.transition-transform.duration-200.cursor-pointer.text-right
+   [:h2.break-all.text-lg.font-medium.sm:text-xl
+    [:a.hover:underline
+     {:href (str "/view/despesas/item/" id)}
+     content]]
+   [:p.mt-1.break-all.text-sm.text-gray-700
+    (format-money val)]
+   [:div.mt-4.text-xs.font-medium.text-gray-500
+    (format-date (str created_at))]])
+
+(defn view-despesas [despesas page]
+  [:div.shadow-xl
+   (map item-component despesas)
+   (loader (inc page))])
 
 (def html-root-handler
   {:name :html-root
    :enter (fn [{:keys [dependencies] :as context}]
-            (let [{:keys [data-source]} dependencies
-                  response (-> [:div (get-despesas data-source)] (layout) (ok))]
+            (let [initial-page 0
+                  {:keys [data-source]} dependencies
+                  despesas (get-despesas initial-page data-source)
+                  response (-> [:div (view-despesas despesas initial-page)] (layout) (ok))]
+              (assoc context :response response)))})
+
+(def view-despesas-items-handler
+  {:name :view-despesas-items
+   :enter (fn [{:keys [dependencies] :as context}]
+            (let [page (-> context :request :query-params :page parse-long)
+                  {:keys [data-source]} dependencies
+                  despesas (get-despesas page data-source)
+                  response (-> (if (seq despesas) (view-despesas despesas page) "") (ok))]
+              (log/info "despesas count:" (count despesas))
               (assoc context :response response)))})
