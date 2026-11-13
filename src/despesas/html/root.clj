@@ -6,7 +6,8 @@
             [next.jdbc :as jdbc]
             [next.jdbc.result-set :as rs]
             [honey.sql :as sql]
-            [clojure.tools.logging :as log])
+            [clojure.tools.logging :as log]
+            [despesas.model :refer [validate-despesa]])
   (:import [java.time LocalDateTime]
            [java.time.format DateTimeFormatterBuilder]
            [java.time.temporal ChronoField]
@@ -143,6 +144,34 @@
              :hx-get (format "/view/despesas/item/%s/edit" id)}
     "Editar"]])
 
+(defn despesa-edit-form
+  [{:keys [id
+           content
+           val]}]
+  [:form
+   {:class (tw [:bg-slate-100
+                :p-5])
+    :hx-put (format "/view/despesas/item/%s/edit" id)
+    :hx-target "this"
+    :hx-swap "outerHTML"}
+   [:div {:class "mt-2 flex gap-2 items-center"}
+    [:label "Item:"]
+    [:input {:class (tw [tw-input])
+             :type "text"
+             :name "content"
+             :value content}]]
+   [:div {:class "mt-2 flex gap-2 items-center"}
+    [:label "Valor:"]
+    [:input {:class (tw [tw-input])
+             :type "text"
+             :name "val"
+             :value val}]]
+   [:div {:class (tw [:flex :flex-row :gap-2 :mt-5])}
+    [:button {:class (tw [tw-primary-button])} "Submit"]
+    [:button {:hx-get (str "/view/despesas/item/" id)
+              :hx-target "body"
+              :class (tw [tw-cancel-button])} "Cancel"]]])
+
 (def html-root-handler
   {:name :html-root
    :enter (fn [{:keys [dependencies] :as context}]
@@ -171,3 +200,29 @@
                   response (if despesa (ok (layout (view-despesas-detail-component despesa))) (not-found))]
               (log/info "despesa found:" despesa)
               (assoc context :response response)))})
+
+(def edit-despesa-item-handler
+  {:name :edit-despesa-item
+   :enter (fn [{:keys [dependencies] :as context}]
+            (let [{:keys [data-source]} dependencies
+                  id (-> context :request :path-params :id (parse-uuid))
+                  despesa (get-despesa-by-id id data-source)
+                  response (if despesa (ok (despesa-edit-form despesa)) (not-found))]
+              (log/info "despesa found:" despesa)
+              (assoc context :response response)))})
+
+(def update-despesa-item-handler
+  {:name :update-despesa-item
+   :enter (fn [{:keys [dependencies] :as context}]
+            (let [{:keys [data-source]} dependencies
+                  request (-> context :request)
+                  id (-> request :path-params :id (parse-uuid))
+                  {:keys [content val]} (:form-params request)
+                  despesa {:content content :val (parse-double val)}
+                  query (-> {:update :despesas
+                             :set despesa
+                             :where [:= id :despesas.id]}
+                            (sql/format))]
+              (validate-despesa despesa)
+              (jdbc/execute! (data-source) query {:builder-fn rs/as-unqualified-lower-maps})
+              (assoc context :response (ok "saved"))))})

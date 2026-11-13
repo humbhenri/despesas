@@ -3,16 +3,18 @@
             [io.pedestal.http :as http]
             [io.pedestal.http.route :as route]
             [io.pedestal.interceptor :as interceptor]
+            [io.pedestal.interceptor.chain :as chain]
             [io.pedestal.http.content-negotiation :as content-negotation]
             [io.pedestal.http.body-params :as body-params]
             [cheshire.core :as json]
-            [schema.core :as s]
             [next.jdbc :as jdbc]
             [next.jdbc.result-set :as rs]
             [clojure.tools.logging :as log]
             [honey.sql :as sql]
             [clojure.pprint :refer [pprint]]
-            [despesas.html.root :refer [html-root-handler view-despesas-items-handler view-despesa-item-handler]]))
+            [despesas.html.root :refer [html-root-handler view-despesas-items-handler view-despesa-item-handler
+                                        edit-despesa-item-handler update-despesa-item-handler]]
+            [despesas.model :refer [validate-despesa]]))
 
 (defn response
   ([status]
@@ -41,10 +43,6 @@
                   response (if despesa (ok despesa) (not-found))]
               (assoc context :response response)))})
 
-(s/defschema Despesa
-  {:content s/Str
-   :val s/Num})
-
 (defn spy [x]
   (pprint x)
   x)
@@ -53,7 +51,7 @@
   {:name :post-despesa
    :enter (fn [{:keys [dependencies] :as context}]
             (let [request (:request context)
-                  despesa (s/validate Despesa (:json-params request))
+                  despesa (validate-despesa (:json-params request))
                   content (:content despesa)
                   val (:val despesa)
                   {:keys [data-source]} dependencies
@@ -67,6 +65,42 @@
               (assoc context :response (created (first results)))))})
 
 (def content-negotiation-interceptor (content-negotation/negotiate-content ["application/json"]))
+
+(def generic-error-interceptor
+  (interceptor/interceptor
+   {:name ::generic-error-interceptor
+    :error (fn [context exception]
+             (let [message (.getMessage exception)]
+               (assoc context :response (response 500 {:message message}))))}))
+
+(defn find-sql-exception [^Throwable t]
+  (loop [cause t]
+    (cond
+      (nil? cause) nil
+      (instance? java.sql.SQLException cause) cause
+      :else (recur (.getCause cause)))))
+
+(def database-error-interceptor
+  (interceptor/interceptor
+   {:name ::database-error-interceptor
+    :error
+    (fn [context exception]
+      (let [sql-ex (find-sql-exception exception)]
+        (if sql-ex
+          (let [sql-state (.getSQLState ^java.sql.SQLException sql-ex)]
+            (case sql-state
+              "23505" (assoc context :response
+                             {:status 409 :body "Registro já cadastrado."})
+
+              "23503" (assoc context :response
+                             {:status 409 :body "Registro possui dependências."})
+
+              "23502" (assoc context :response
+                             {:status 400 :body "Campo obrigatório não informado."})
+
+              (assoc context :response
+                     {:status 500 :body "Erro ao executar operação no banco de dados."})))
+          (chain/with-error context exception))))}))
 
 (def info-handler
   {:name :info
@@ -92,7 +126,9 @@
      ["/info" :get info-handler :route-name :info]
      ["/" :get html-root-handler :route-name :html-root]
      ["/view/despesas/items" :get view-despesas-items-handler :route-name :view-despesas-items]
-     ["/view/despesas/item/:id" :get view-despesa-item-handler :route-name :view-despesa-item]}))
+     ["/view/despesas/item/:id" :get view-despesa-item-handler :route-name :view-despesa-item]
+     ["/view/despesas/item/:id/edit" :get edit-despesa-item-handler  :route-name :edit-despesa-item]
+     ["/view/despesas/item/:id/edit" :put [(body-params/body-params) update-despesa-item-handler]  :route-name :update-despesa-item]}))
 
 (defn inject-dependencies [dependencies]
   (interceptor/interceptor
@@ -111,7 +147,10 @@
                       ::http/port (-> config :server :port)
                       ::http/secure-headers {:content-security-policy-settings {:object-src "none"}}}
                      (http/default-interceptors)
-                     (update ::http/interceptors concat [(inject-dependencies component) content-negotiation-interceptor])
+                     (update ::http/interceptors concat [(inject-dependencies component)
+                                                         content-negotiation-interceptor
+                                                         database-error-interceptor
+                                                         generic-error-interceptor])
                      (http/create-server)
                      (http/start))]
       (assoc component :server server)))
