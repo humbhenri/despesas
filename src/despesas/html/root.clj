@@ -7,7 +7,8 @@
             [next.jdbc.result-set :as rs]
             [honey.sql :as sql]
             [clojure.tools.logging :as log]
-            [despesas.model :refer [validate-despesa]])
+            [despesas.model :refer [validate-despesa]]
+            [io.pedestal.http.route :as route])
   (:import [java.time LocalDateTime]
            [java.time.format DateTimeFormatterBuilder]
            [java.time.temporal ChronoField]
@@ -44,7 +45,8 @@
    [:body
     [:div {:class "container mx-auto mt-10"}
      [:h1 {:class "text-2xl font-bold loading-7 mb-5 text-gray-900"}
-      "Bem vindo às suas Despesas"]
+      [:a {:href "/"}
+       "Bem vindo às suas Despesas"]]
      body]]])
 
 (defn ok
@@ -61,6 +63,9 @@
   {:status 404
    :headers {"Content-Type" "text/html"}
    :body (-> (layout "Despesa não encontrada") (hp/html5))})
+
+(defn redirect-root [flash]
+  {:status 200 :headers {"HX-Redirect" "/"} :body "" :flash flash})
 
 (def page-size 10)
 
@@ -122,10 +127,18 @@
    [:div.mt-4.text-xs.font-medium.text-gray-500
     (format-date (str created_at))]])
 
-(defn view-despesas [despesas page]
-  [:div.shadow-xl
-   (map item-component despesas)
-   (loader (inc page))])
+(defn view-despesas [despesas page flash]
+  [:div
+   (when flash
+     [:div {:class (tw [:flex :items-center :bg-blue-500 :text-white :font-bold :px-4 :py-3])} flash])
+   [:div.flex.justify-end
+    [:a {:class (tw [tw-primary-button :mt-5])
+         :href "/view/despesas/item/new"
+         :title "Adiciona nova despesa"}
+     "Adicionar"]]
+   [:div.shadow-xl
+    (map item-component despesas)
+    (loader (inc page))]])
 
 (defn view-despesas-detail-component [{:keys [id content val created_at]}]
   [:div {:class (tw [:p-5 :bg-slate-100])
@@ -148,37 +161,43 @@
   [{:keys [id
            content
            val]}]
-  [:form
-   {:class (tw [:bg-slate-100
-                :p-5])
-    :hx-put (format "/view/despesas/item/%s/edit" id)
-    :hx-target "this"
-    :hx-swap "outerHTML"}
-   [:div {:class "mt-2 flex gap-2 items-center"}
-    [:label "Item:"]
-    [:input {:class (tw [tw-input])
-             :type "text"
-             :name "content"
-             :value content}]]
-   [:div {:class "mt-2 flex gap-2 items-center"}
-    [:label "Valor:"]
-    [:input {:class (tw [tw-input])
-             :type "text"
-             :name "val"
-             :value val}]]
-   [:div {:class (tw [:flex :flex-row :gap-2 :mt-5])}
-    [:button {:class (tw [tw-primary-button])} "Submit"]
-    [:button {:hx-get (str "/view/despesas/item/" id)
-              :hx-target "body"
-              :class (tw [tw-cancel-button])} "Cancel"]]])
+  (let [form-class (if (nil? id)
+                     {:hx-post "/view/despesas/item/new"}
+                     {:hx-put (format "/view/despesas/item/%s/edit" id)})
+        cancel-target (if (nil? id) "/" (str "/view/despesas/item/" id))]
+    [:form
+     (merge form-class {:class (tw [:bg-slate-100 :p-5])
+                        :hx-target "this"
+                        :hx-swap "outerHTML"})
+     [:div {:class "mt-2 flex gap-2 items-center"}
+      [:label "Item:"]
+      [:input {:class (tw [tw-input])
+               :type "text"
+               :name "content"
+               :value content
+               :required true}]]
+     [:div {:class "mt-2 flex gap-2 items-center"}
+      [:label "Valor:"]
+      [:input {:class (tw [tw-input])
+               :type "text"
+               :name "val"
+               :value val
+               :required true}]]
+     [:div {:class (tw [:flex :flex-row :gap-2 :mt-5])}
+      [:button {:class (tw [tw-primary-button])} "Submit"]
+      [:button {:hx-get cancel-target
+                :hx-target "body"
+                :class (tw [tw-cancel-button])} "Cancel"]]]))
 
 (def html-root-handler
   {:name :html-root
-   :enter (fn [{:keys [dependencies] :as context}]
-            (let [initial-page 0
+   :enter (fn [{:keys [dependencies request] :as context}]
+            (let [flash (:flash request)
+                  initial-page 0
                   {:keys [data-source]} dependencies
                   despesas (get-despesas initial-page data-source)
-                  response (-> [:div (view-despesas despesas initial-page)] (layout) (ok))]
+                  response (-> [:div (view-despesas despesas initial-page flash)] (layout) (ok))]
+              (log/info (format "flash = %s" flash))
               (assoc context :response response)))})
 
 (def view-despesas-items-handler
@@ -225,4 +244,26 @@
                             (sql/format))]
               (validate-despesa despesa)
               (jdbc/execute! (data-source) query {:builder-fn rs/as-unqualified-lower-maps})
-              (assoc context :response (ok "saved"))))})
+              (assoc context :response (redirect-root "Despesa atualizada."))))})
+
+(def post-despesa-item-handler
+  {:name :post-despesa-item
+   :enter (fn [{:keys [dependencies] :as context}]
+            (let [{:keys [data-source]} dependencies
+                  request (-> context :request)
+                  {:keys [content val]} (:form-params request)
+                  despesa (-> {:content content :val (parse-double val)} (validate-despesa))
+                  query (-> {:insert-into :despesas
+                             :columns [:content :val]
+                             :values [[content (:val despesa)]]
+                             :returning :*}
+                            (sql/format))
+                  results (jdbc/execute! (data-source) query
+                                         {:builder-fn rs/as-unqualified-lower-maps})]
+              (assoc context :response (redirect-root "Despesa salva."))))})
+
+(def add-despesa-item-handler
+  {:name :add-despesa-item
+   :enter (fn [{:keys [dependencies] :as context}]
+            (let [response (-> (despesa-edit-form nil) (layout) (ok))]
+              (assoc context :response response)))})

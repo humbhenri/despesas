@@ -1,6 +1,7 @@
 (ns despesas.components.api
   (:require [com.stuartsierra.component :as component]
             [io.pedestal.http :as http]
+            [io.pedestal.http.ring-middlewares :as middlewares]
             [io.pedestal.http.route :as route]
             [io.pedestal.interceptor :as interceptor]
             [io.pedestal.interceptor.chain :as chain]
@@ -12,8 +13,13 @@
             [clojure.tools.logging :as log]
             [honey.sql :as sql]
             [clojure.pprint :refer [pprint]]
-            [despesas.html.root :refer [html-root-handler view-despesas-items-handler view-despesa-item-handler
-                                        edit-despesa-item-handler update-despesa-item-handler]]
+            [despesas.html.root :refer [html-root-handler
+                                        view-despesas-items-handler
+                                        view-despesa-item-handler
+                                        edit-despesa-item-handler
+                                        update-despesa-item-handler
+                                        add-despesa-item-handler
+                                        post-despesa-item-handler]]
             [despesas.model :refer [validate-despesa]]))
 
 (defn response
@@ -128,7 +134,9 @@
      ["/view/despesas/items" :get view-despesas-items-handler :route-name :view-despesas-items]
      ["/view/despesas/item/:id" :get view-despesa-item-handler :route-name :view-despesa-item]
      ["/view/despesas/item/:id/edit" :get edit-despesa-item-handler  :route-name :edit-despesa-item]
-     ["/view/despesas/item/:id/edit" :put [(body-params/body-params) update-despesa-item-handler]  :route-name :update-despesa-item]}))
+     ["/view/despesas/item/:id/edit" :put [(body-params/body-params) update-despesa-item-handler]  :route-name :update-despesa-item]
+     ["/view/despesas/item/new" :get add-despesa-item-handler :route-name :add-despesa-item ]
+     ["/view/despesas/item/new" :post [(body-params/body-params) post-despesa-item-handler] :route-name :post-despesa-item]}))
 
 (defn inject-dependencies [dependencies]
   (interceptor/interceptor
@@ -143,6 +151,7 @@
     (log/info "Starting Api component")
     (let [server (-> {::http/join? false
                       ::http/routes routes
+                      ::http/enable-session {}
                       ::http/type :jetty
                       ::http/port (-> config :server :port)
                       ::http/secure-headers {:content-security-policy-settings {:object-src "none"}}}
@@ -150,7 +159,8 @@
                      (update ::http/interceptors concat [(inject-dependencies component)
                                                          content-negotiation-interceptor
                                                          database-error-interceptor
-                                                         generic-error-interceptor])
+                                                         generic-error-interceptor
+                                                         (middlewares/flash)])
                      (http/create-server)
                      (http/start))]
       (assoc component :server server)))
