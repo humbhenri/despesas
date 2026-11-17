@@ -15,6 +15,7 @@
            [java.text NumberFormat]
            [java.util Locale]))
 
+;; Tailwind classes
 (defn tw
   [classes]
   (->> (flatten classes)
@@ -23,7 +24,6 @@
        (sort)
        (str/join " ")))
 
-;; Tailwind classes
 (def tw-primary-button
   [:bg-blue-500 :hover:bg-blue-400 :text-white :font-bold :py-2 :px-4 :border-b-4 :border-blue-700 :hover:border-blue-500 :rounded])
 
@@ -41,7 +41,8 @@
    [:title "Despesas | Home"]
    (hp/include-js
     "https://cdn.tailwindcss.com"
-    "https://unpkg.com/htmx.org@1.9.4?plugins=forms")
+    "https://unpkg.com/htmx.org@1.9.4?plugins=forms"
+    "https://cdn.jsdelivr.net/npm/sweetalert2@11")
    [:body
     [:div {:class "container mx-auto mt-10"}
      [:h1 {:class "text-2xl font-bold loading-7 mb-5 text-gray-900"}
@@ -132,7 +133,7 @@
    (when flash
      [:div {:class (tw [:flex :items-center :bg-blue-500 :text-white :font-bold :px-4 :py-3])} flash])
    [:div.flex.justify-end
-    [:a {:class (tw [tw-primary-button :mt-5])
+    [:a {:class (tw [tw-primary-button :mt-5 :mb-4])
          :href "/view/despesas/item/new"
          :title "Adiciona nova despesa"}
      "Adicionar"]]
@@ -153,9 +154,16 @@
    [:div {:class "mt-2 flex gap-2 items-center"}
     [:label "Data:"]
     [:span {:class (tw [:font-bold])} (format-date (str created_at))]]
-   [:button {:class (tw [tw-primary-button :mt-5])
-             :hx-get (format "/view/despesas/item/%s/edit" id)}
-    "Editar"]])
+   [:div {:class "mt-5 gap-2 flex"}
+    [:button {:class (tw [tw-primary-button])
+              :hx-get (format "/view/despesas/item/%s/edit" id)}
+     "Editar"]
+    [:button {:type "button"
+              :class (tw [tw-cancel-button])
+              :hx-trigger "confirmed"
+              :hx-delete (format "/view/despesas/item/%s/delete" id)
+              :onClick "Swal.fire({title: 'Confirme', text: 'Realmente deletar?'}).then((result) => {if(result.isConfirmed) {htmx.trigger(this, 'confirmed')}})"}
+     "Deletar"]]])
 
 (defn despesa-edit-form
   [{:keys [id
@@ -206,7 +214,7 @@
             (let [page (-> context :request :query-params :page parse-long)
                   {:keys [data-source]} dependencies
                   despesas (get-despesas page data-source)
-                  response (-> (if (seq despesas) (view-despesas despesas page) "") (ok))]
+                  response (-> (if (seq despesas) (view-despesas despesas page nil) "") (ok))]
               (log/info "despesas count:" (count despesas))
               (assoc context :response response)))})
 
@@ -229,6 +237,19 @@
                   response (if despesa (ok (despesa-edit-form despesa)) (not-found))]
               (log/info "despesa found:" despesa)
               (assoc context :response response)))})
+
+(def delete-despesa-item-handler
+  {:name :delete-despesa-item
+   :enter (fn [{:keys [dependencies] :as context}]
+            (let [{:keys [data-source]} dependencies
+                  id (-> context :request :path-params :id (parse-uuid))
+                  query (->
+                         {:delete-from :despesas :where [:= id :despesas.id]}
+                         (sql/format))
+                  ]
+              (log/info "delete despesa with id:" id)
+              (jdbc/execute! (data-source) query)
+              (assoc context :response (redirect-root "Despesa deletada."))))})
 
 (def update-despesa-item-handler
   {:name :update-despesa-item

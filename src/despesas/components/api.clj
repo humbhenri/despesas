@@ -17,6 +17,7 @@
                                         view-despesas-items-handler
                                         view-despesa-item-handler
                                         edit-despesa-item-handler
+                                        delete-despesa-item-handler
                                         update-despesa-item-handler
                                         add-despesa-item-handler
                                         post-despesa-item-handler]]
@@ -133,7 +134,8 @@
      ["/" :get html-root-handler :route-name :html-root]
      ["/view/despesas/items" :get view-despesas-items-handler :route-name :view-despesas-items]
      ["/view/despesas/item/:id" :get view-despesa-item-handler :route-name :view-despesa-item]
-     ["/view/despesas/item/:id/edit" :get edit-despesa-item-handler  :route-name :edit-despesa-item]
+     ["/view/despesas/item/:id/edit" :get edit-despesa-item-handler :route-name :edit-despesa-item]
+     ["/view/despesas/item/:id/delete" :delete delete-despesa-item-handler :route-name :delete-despesa-item]
      ["/view/despesas/item/:id/edit" :put [(body-params/body-params) update-despesa-item-handler]  :route-name :update-despesa-item]
      ["/view/despesas/item/new" :get add-despesa-item-handler :route-name :add-despesa-item ]
      ["/view/despesas/item/new" :post [(body-params/body-params) post-despesa-item-handler] :route-name :post-despesa-item]}))
